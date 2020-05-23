@@ -1,0 +1,131 @@
+---
+title: "Human Activity Recognition"
+output:
+  pdf_document: default
+  html_document: default
+---
+## Aim of the project
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Different outcomes
+
+1. Class A - Exactly according to the specification.
+2. Class B - Throwing the elbows to the front.
+3. Class C - Lifting the dumbbell only halfway.
+4. Class D - Lowering the dumbbell only halfway.
+5. Class E - Throwing the hips to the front.
+
+## Downloading data
+
+```{r cache=T}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "train.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "test.csv")
+```
+
+Importing required libraries
+
+```{r warning=F, message=F, cache=T}
+library(caret)
+```
+
+## Preprocessing
+
+```{r cache=T}
+training <- read.csv("train.csv", header = T)
+testing <- read.csv("test.csv", header = T)
+
+dim(training)
+```
+
+```{r cache=T}
+##Lets see how many columns have all data as NA values
+columnNAs <- colSums(is.na(training)) == 19216
+training[, columnNAs] <- NULL
+
+## Now the dataset has been reduced to 93 columns.
+dim(training)
+
+##Applying same for the test dataset
+testing[, columnNAs] <- NULL
+dim(testing)
+```
+
+```{r cache=T}
+##Lets filter the required columns
+requiredColumns1 <- grep(".*arm", colnames(training))
+requiredColumns2 <- grep(".*belt", colnames(training))
+requiredColumns3 <- grep(".*dumbbell", colnames(training))
+
+## These are the columns that are required for our prediction.
+requiredColumns1; requiredColumns2; requiredColumns3
+
+## We can drop off the columns which have not much variance in them.
+nzv <- nearZeroVar(training, saveMetrics = TRUE)
+training <- training[, (nzv$nzv == FALSE)]
+
+dim(training)
+```
+
+## Model Selection
+
+We have filtered out what are the columns to be useful for prediction. By reading the dataset information from the website, one can easily determine that those columns which contains accelerometer are very important that cannot be eliminated.
+
+Let's consider a simple Decision Treee and see how much accuracy we get.
+
+```{r cache=T}
+set.seed(1223)
+validation <- createDataPartition(y = training$classe, p = 0.25, list = F)
+training_data <- training[-validation,]
+validation_data <- training[validation,]
+
+modelDT <- train(classe ~ accel_belt_x + accel_belt_y + accel_belt_z + accel_arm_x + accel_arm_y + accel_arm_z + 
+                  accel_dumbbell_x + accel_dumbbell_y+ accel_dumbbell_z +
+                  accel_forearm_x + accel_forearm_y + accel_forearm_z, 
+                  data = training_data, method = "rpart")
+modelDT
+```
+
+Here, we get only 44 percent accuracy which defines that this is a bad model to work with. So, we should go for random forest.
+
+### Random Forest
+
+Initially, only accelerometer columns where selected and trained for **Random Forest**. But the accuracy was only 94 percent. In order to improve the accuracy, we should find some other variables which are all important for the prediction. 
+
+```{r cache=T}
+set.seed(1223)
+validation <- createDataPartition(y = training$classe, p = 0.25, list = F)
+training_data <- training[-validation,]
+validation_data <- training[validation,]
+
+
+modelFit <- train(classe ~ accel_belt_x + accel_belt_y + accel_belt_z + accel_arm_x + accel_arm_y + accel_arm_z + 
+                  accel_dumbbell_x + accel_dumbbell_y+ accel_dumbbell_z +
+                  accel_forearm_x + accel_forearm_y + accel_forearm_z +
+                  roll_belt + pitch_belt + yaw_belt +
+                  roll_arm + pitch_arm + yaw_arm +
+                  roll_forearm + pitch_forearm + yaw_forearm +
+                  roll_dumbbell + pitch_dumbbell + yaw_dumbbell,
+                  data = training_data, method = "rf")
+modelFit
+```
+
+Using random forest, we have got 98 percent accuracy which is quite satisfactory. The next step is to see how well it performs in validation set.
+
+
+```{r cache=T}
+predictions <- predict(modelFit, validation_data)
+confusionMatrix(validation_data$classe, predictions)
+```
+
+We got 99 percent accuracy for our validation set. The expected out of sample error is approximately 0.01(i.e. 1 - 0,9923). 
+
+```{r cache=T}
+## Prediction for the 20 new observations.
+predict(modelFit, testing)
+```
+
+## Reference
+
+1. [Human Activity Recognition](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har)
+
